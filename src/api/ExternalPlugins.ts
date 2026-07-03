@@ -443,10 +443,17 @@ async function executePluginScript(code: string): Promise<Plugin[]> {
     window.__dicicord_internal = {};
     window.__dicicord_internal_settings = {};
 
-    const script = document.createElement("script");
-    script.textContent = code;
-    document.head.appendChild(script);
+    // Use new Function() so the code runs in the current context
+    // with access to window.DigiCord and window.__dicicord_internal
+    try {
+        const fn = new Function(code);
+        fn();
+    } catch (e) {
+        logger.error("Failed to execute plugin script:", e);
+        throw e;
+    }
 
+    // Small delay to let any async registration happen
     await new Promise(r => setTimeout(r, 50));
 
     const plugins: Plugin[] = [];
@@ -456,8 +463,8 @@ async function executePluginScript(code: string): Promise<Plugin[]> {
         }
     }
 
-    script.remove();
     window.__dicicord_internal = {};
+    window.__dicicord_internal_settings = {};
 
     return plugins;
 }
@@ -476,16 +483,36 @@ export async function installExternalPlugin(url: string): Promise<ExternalPlugin
         throw new Error(`Failed to fetch plugin from ${normalizedUrl}: ${e}`);
     }
 
+    // Strip BetterDiscord metadata comments that might cause issues
+    code = code.replace(/\/\*\*[\s\S]*?\*\//g, "").trim();
+
     let plugins: Plugin[];
     try {
         plugins = await executePluginScript(code);
-    } catch (e) {
-        throw new Error(`Failed to execute plugin script: ${e}`);
+    } catch (e: any) {
+        const msg = e?.message ?? String(e);
+        // Provide helpful error context
+        if (msg.includes("require is not defined") || msg.includes("fs") || msg.includes("path")) {
+            throw new Error(
+                "This plugin uses Node.js APIs (require, fs, path) which don't work in DigiCord. " +
+                "This is likely a BetterDiscord plugin. DigiCord plugins must use DigiCord.* APIs instead.\n" +
+                `Original error: ${msg}`
+            );
+        }
+        throw new Error(`Failed to execute plugin script: ${msg}`);
     }
 
     if (plugins.length === 0) {
         throw new Error(
-            "No plugin registered! Your .js file must call DigiCord.registerPlugin({ name: '...', ... })."
+            "No plugin registered! Make sure your .js file calls DigiCord.registerPlugin({...}).\n\n" +
+            "Example:\n" +
+            "DigiCord.registerPlugin({\n" +
+            "  name: 'MyPlugin',\n" +
+            "  description: '...',\n" +
+            "  authors: [{ name: 'You', id: 123n }],\n" +
+            "  start() { console.log('Started!'); },\n" +
+            "  stop() { console.log('Stopped!'); }\n" +
+            "});"
         );
     }
 
