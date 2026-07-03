@@ -18,7 +18,7 @@
 
 import { definePluginSettings } from "@api/Settings";
 import { BackupRestoreIcon, CloudIcon, MainSettingsIcon, PaintbrushIcon, PatchHelperIcon, PlaceholderIcon, PluginsIcon, UpdaterIcon, VesktopSettingsIcon } from "@components/Icons";
-import { BackupAndRestoreTab, CloudTab, PatchHelperTab, PluginsTab, ThemesTab, UpdaterTab, VencordTab } from "@components/settings/tabs";
+import { BackupAndRestoreTab, CloudTab, ExternalPluginsTab, ExternalThemesTab, PatchHelperTab, PluginsTab, ThemesTab, UpdaterTab, VencordTab } from "@components/settings/tabs";
 import { Devs } from "@utils/constants";
 import { isTruthy } from "@utils/guards";
 import definePlugin, { IconProps, OptionType } from "@utils/types";
@@ -171,8 +171,8 @@ export default definePlugin({
         const vencordEntries: SettingsLayoutNode[] = [
             buildEntry({
                 key: "vencord_main",
-                title: "Vencord",
-                panelTitle: "Vencord Settings",
+                title: "Vencord + DigiCord",
+                panelTitle: "Vencord + DigiCord Settings",
                 Component: VencordTab,
                 Icon: MainSettingsIcon
             }),
@@ -188,13 +188,21 @@ export default definePlugin({
                 Component: ThemesTab,
                 Icon: PaintbrushIcon
             }),
-            !IS_UPDATER_DISABLED && UpdaterTab && buildEntry({
-                key: "vencord_updater",
-                title: "Updater",
-                panelTitle: "Vencord Updater",
-                Component: UpdaterTab,
-                Icon: UpdaterIcon
+            buildEntry({
+                key: "vencord_external_plugins",
+                title: "External Plugins",
+                Component: ExternalPluginsTab,
+                Icon: PluginsIcon
             }),
+            buildEntry({
+                key: "vencord_external_themes",
+                title: "External Themes",
+                Component: ExternalThemesTab,
+                Icon: PaintbrushIcon
+            }),
+
+            // Disabled Vencord Update
+
             buildEntry({
                 key: "vencord_cloud",
                 title: "Cloud",

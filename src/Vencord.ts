@@ -38,6 +38,8 @@ import { StartAt } from "@utils/types";
 import { SettingsRouter } from "@webpack/common";
 
 import { get as dsGet } from "./api/DataStore";
+import { initExternalPlugins } from "./api/ExternalPlugins";
+import { initExternalThemes } from "./api/ExternalThemes";
 import { NotificationData, showNotification } from "./api/Notifications";
 import { initPluginManager, PMLogger, startAllPlugins } from "./api/PluginManager";
 import { PlainSettings, Settings, SettingsStore } from "./api/Settings";
@@ -125,7 +127,7 @@ async function runUpdateCheck() {
             await update();
             if (Settings.autoUpdateNotification) {
                 notify({
-                    title: "Vencord has been updated!",
+                    title: "Vencord+DigiCord has been updated!",
                     body: "Click here to restart",
                     onClick: relaunch
                 });
@@ -174,6 +176,8 @@ async function init() {
 
 initPluginManager();
 initStyles();
+initExternalPlugins().catch(e => console.error("[DigiCord] Failed to init external plugins", e));
+initExternalThemes().catch(e => console.error("[DigiCord] Failed to init external themes", e));
 startAllPlugins(StartAt.Init);
 init();
 

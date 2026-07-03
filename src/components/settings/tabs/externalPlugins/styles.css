@@ -1,0 +1,275 @@
+.vc-ext-plugins-grid {
+    margin-top: 16px;
+    display: grid;
+    gap: 16px;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+}
+
+.vc-ext-plugins-card {
+    padding: 12px 16px;
+    background: var(--background-secondary);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    transition: background-color 0.2s ease;
+}
+
+.vc-ext-plugins-card:hover {
+    background: var(--background-secondary-alt);
+}
+
+.vc-ext-plugins-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.vc-ext-plugins-card-name {
+    flex: 1;
+    font-weight: 600;
+    color: var(--text-normal);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.vc-ext-plugins-card-url {
+    font-size: 12px;
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.vc-ext-plugins-card-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 4px;
+}
+
+.vc-ext-plugins-action-btn {
+    padding: 4px 8px;
+    font-size: 12px;
+    border-radius: 4px;
+    border: none;
+    cursor: pointer;
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+    transition: background-color 0.15s ease;
+}
+
+.vc-ext-plugins-action-btn:hover {
+    background: var(--background-modifier-active);
+}
+
+.vc-ext-plugins-action-btn-danger {
+    color: var(--text-danger);
+}
+
+.vc-ext-plugins-action-btn-danger:hover {
+    background: rgba(237, 66, 69, 0.15);
+}
+
+.vc-ext-plugins-input-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.vc-ext-plugins-input {
+    flex: 1;
+    height: 40px;
+    padding: 0 12px;
+    background: var(--input-background);
+    border: none;
+    border-radius: 4px;
+    color: var(--text-normal);
+    font-size: 14px;
+    outline: none;
+}
+
+.vc-ext-plugins-input::placeholder {
+    color: var(--text-muted);
+}
+
+.vc-ext-plugins-input:focus {
+    outline: 2px solid var(--brand-500);
+}
+
+.vc-ext-plugins-install-btn {
+    height: 40px;
+    padding: 0 16px;
+    border: none;
+    border-radius: 4px;
+    background: var(--brand-500);
+    color: var(--white-500);
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color 0.15s ease;
+}
+
+.vc-ext-plugins-install-btn:hover {
+    background: var(--brand-560);
+}
+
+.vc-ext-plugins-install-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.vc-ext-plugins-empty {
+    padding: 32px;
+    text-align: center;
+    color: var(--text-muted);
+}
+
+.vc-ext-plugins-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 500;
+}
+
+.vc-ext-plugins-status-enabled {
+    background: rgba(87, 242, 135, 0.15);
+    color: #57f287;
+}
+
+.vc-ext-plugins-status-disabled {
+    background: rgba(254, 231, 92, 0.15);
+    color: #fee75c;
+}
+
+.vc-ext-plugins-error {
+    padding: 12px;
+    background: rgba(237, 66, 69, 0.1);
+    border-left: 3px solid var(--text-danger);
+    border-radius: 4px;
+    color: var(--text-danger);
+    font-size: 13px;
+}
+
+.vc-ext-plugins-loading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+/* ── Settings Modal ── */
+
+.vc-ext-settings-modal {
+    max-width: 520px;
+}
+
+.vc-ext-settings-modal-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-normal);
+}
+
+.vc-ext-settings-settings-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 16px 0;
+}
+
+.vc-ext-settings-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.vc-ext-settings-label {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text-normal);
+}
+
+.vc-ext-settings-description {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+
+.vc-ext-settings-text-input {
+    width: 100%;
+    height: 36px;
+    padding: 0 10px;
+    background: var(--input-background);
+    border: none;
+    border-radius: 4px;
+    color: var(--text-normal);
+    font-size: 14px;
+    outline: none;
+}
+
+.vc-ext-settings-text-input:focus {
+    outline: 2px solid var(--brand-500);
+}
+
+.vc-ext-settings-select {
+    width: 100%;
+    height: 36px;
+    padding: 0 8px;
+    background: var(--input-background);
+    border: none;
+    border-radius: 4px;
+    color: var(--text-normal);
+    font-size: 14px;
+    outline: none;
+    cursor: pointer;
+}
+
+.vc-ext-settings-select:focus {
+    outline: 2px solid var(--brand-500);
+}
+
+.vc-ext-settings-checkbox {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--brand-500);
+    cursor: pointer;
+}
+
+.vc-ext-settings-slider-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.vc-ext-settings-slider {
+    flex: 1;
+    accent-color: var(--brand-500);
+    cursor: pointer;
+}
+
+.vc-ext-settings-slider-value {
+    min-width: 32px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--text-normal);
+    font-weight: 600;
+}
+
+.vc-ext-settings-unsupported {
+    font-size: 12px;
+    color: var(--text-danger);
+    font-style: italic;
+}
+
+.vc-ext-plugins-action-btn-settings {
+    background: var(--brand-500);
+    color: var(--white-500);
+}
+
+.vc-ext-plugins-action-btn-settings:hover {
+    background: var(--brand-560);
+}

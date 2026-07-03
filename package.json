@@ -1,7 +1,7 @@
 {
-    "name": "vencord",
+    "name": "vencord-elee",
     "private": "true",
-    "version": "1.14.15",
+    "version": "b1",
     "description": "The cutest Discord client mod",
     "homepage": "https://github.com/Vendicated/Vencord#readme",
     "bugs": {
@@ -12,7 +12,7 @@
         "url": "git+https://github.com/Vendicated/Vencord.git"
     },
     "license": "GPL-3.0-or-later",
-    "author": "Vendicated",
+    "author": "Vendicated + elee-py",
     "scripts": {
         "build": "node --require=./scripts/suppressExperimentalWarnings.js scripts/build/build.mjs",
         "buildStandalone": "pnpm build --standalone",
