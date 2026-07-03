@@ -12,7 +12,7 @@
 DigiCord.registerPlugin({
     name: "NitroFeatures",
     description: "Unlock Nitro-like features: custom emoji everywhere, higher quality streams, profile tweaks",
-    authors: [{ name: "DigiCord", id: 0n }],
+    authors: [{ name: "DigiCord", id: 0 }],
 
     settings: {
         def: {

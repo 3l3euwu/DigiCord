@@ -437,14 +437,12 @@ function stopExternalPlugin(p: Plugin): boolean {
 
 // ── Execute a .js file and collect registered plugins ─────────────────────
 
-async function executePluginScript(code: string): Promise<Plugin[]> {
+async function executePluginScript(code: string): Promise<{ plugins: Plugin[], settingsDefs: Record<string, ExtSettingsDefinition> }> {
     installGlobalApi();
 
     window.__dicicord_internal = {};
     window.__dicicord_internal_settings = {};
 
-    // Use new Function() so the code runs in the current context
-    // with access to window.DigiCord and window.__dicicord_internal
     try {
         const fn = new Function(code);
         fn();
@@ -453,7 +451,6 @@ async function executePluginScript(code: string): Promise<Plugin[]> {
         throw e;
     }
 
-    // Small delay to let any async registration happen
     await new Promise(r => setTimeout(r, 50));
 
     const plugins: Plugin[] = [];
@@ -463,10 +460,12 @@ async function executePluginScript(code: string): Promise<Plugin[]> {
         }
     }
 
+    const settingsDefs: Record<string, ExtSettingsDefinition> = window.__dicicord_internal_settings ?? {};
+
     window.__dicicord_internal = {};
     window.__dicicord_internal_settings = {};
 
-    return plugins;
+    return { plugins, settingsDefs };
 }
 
 // ── Public API ────────────────────────────────────────────────────────────
@@ -483,15 +482,19 @@ export async function installExternalPlugin(url: string): Promise<ExternalPlugin
         throw new Error(`Failed to fetch plugin from ${normalizedUrl}: ${e}`);
     }
 
-    // Strip BetterDiscord metadata comments that might cause issues
-    code = code.replace(/\/\*\*[\s\S]*?\*\//g, "").trim();
+    // Strip leading JSDoc metadata block (/** ... */) if present
+    if (code.startsWith("/**")) {
+        const endIdx = code.indexOf("*/");
+        if (endIdx !== -1) {
+            code = code.substring(endIdx + 2).trim();
+        }
+    }
 
-    let plugins: Plugin[];
+    let result: { plugins: Plugin[], settingsDefs: Record<string, ExtSettingsDefinition> };
     try {
-        plugins = await executePluginScript(code);
+        result = await executePluginScript(code);
     } catch (e: any) {
         const msg = e?.message ?? String(e);
-        // Provide helpful error context
         if (msg.includes("require is not defined") || msg.includes("fs") || msg.includes("path")) {
             throw new Error(
                 "This plugin uses Node.js APIs (require, fs, path) which don't work in DigiCord. " +
@@ -502,21 +505,21 @@ export async function installExternalPlugin(url: string): Promise<ExternalPlugin
         throw new Error(`Failed to execute plugin script: ${msg}`);
     }
 
-    if (plugins.length === 0) {
+    if (result.plugins.length === 0) {
         throw new Error(
             "No plugin registered! Make sure your .js file calls DigiCord.registerPlugin({...}).\n\n" +
             "Example:\n" +
             "DigiCord.registerPlugin({\n" +
             "  name: 'MyPlugin',\n" +
             "  description: '...',\n" +
-            "  authors: [{ name: 'You', id: 123n }],\n" +
+            "  authors: [{ name: 'You', id: 123 }],\n" +
             "  start() { console.log('Started!'); },\n" +
             "  stop() { console.log('Stopped!'); }\n" +
             "});"
         );
     }
 
-    const plugin = plugins[0];
+    const plugin = result.plugins[0];
     const pluginName = plugin.name;
 
     if (!pluginName) {
@@ -527,9 +530,7 @@ export async function installExternalPlugin(url: string): Promise<ExternalPlugin
         throw new Error(`Plugin "${pluginName}" is already installed. Uninstall it first.`);
     }
 
-    // Get settings def from the internal registry
-    const settingsDef = window.__dicicord_internal_settings?.[pluginName] as ExtSettingsDefinition | undefined;
-    window.__dicicord_internal_settings = {};
+    const settingsDef = result.settingsDefs[pluginName];
 
     // Load saved settings values
     const settingsValues = await loadSettingsValues(pluginName);
@@ -665,22 +666,21 @@ export async function initExternalPlugins(): Promise<void> {
             if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
             const code = await resp.text();
 
-            const plugins = await executePluginScript(code);
+            const { plugins, settingsDefs } = await executePluginScript(code);
             if (plugins.length === 0) {
                 logger.error(`External plugin ${name}: no DigiCord.registerPlugin() call found`);
                 continue;
             }
 
             const plugin = plugins[0];
-            const settingsDef = window.__dicicord_internal_settings?.[name] as ExtSettingsDefinition | undefined;
-            window.__dicicord_internal_settings = {};
+            const settingsDef = settingsDefs[name] ?? entry.settingsDef;
 
             const settingsValues = await loadSettingsValues(name);
 
             const loaded: LoadedExternalPlugin = {
                 ...entry,
                 plugin,
-                settingsDef: settingsDef ?? entry.settingsDef,
+                settingsDef,
                 settingsValues,
             };
 
