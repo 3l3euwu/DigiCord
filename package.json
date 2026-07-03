@@ -1,7 +1,7 @@
 {
     "name": "vencord-elee",
     "private": "true",
-    "version": "b1",
+    "version": "b2",
     "description": "The cutest Discord client mod",
     "homepage": "https://github.com/Vendicated/Vencord#readme",
     "bugs": {

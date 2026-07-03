@@ -195,54 +195,48 @@ DigiCord.registerPlugin({
     },
 
     startEmojiBypass() {
-        const listener = (event) => {
-            try {
-                if (!this.store.emojiBypass) return;
+        const EmojiStore = DigiCord.Stores?.EmojiStore;
+        if (!EmojiStore) {
+            this.logger.warn("EmojiStore not available, emoji bypass disabled");
+            return;
+        }
 
-                const content = event?.message?.content;
-                if (!content) return;
+        const listener = (channelId, messageObj, options) => {
+            if (!this.store.emojiBypass) return;
 
-                // Match :shortcode: patterns
-                const emojiRegex = /:([a-zA-Z0-9_]+):/g;
-                if (!emojiRegex.test(content)) return;
+            const emojis = messageObj.validNonShortcutEmojis;
+            if (!emojis || emojis.length === 0) return;
 
-                const emojiStore = DigiCord.Stores?.EmojiStore;
-                if (!emojiStore) return;
+            let modified = false;
 
-                let newContent = content;
-                const matches = content.matchAll(emojiRegex);
+            for (const emoji of emojis) {
+                try {
+                    // Check if user can already use this emoji (from current server or has Nitro)
+                    const canUse = this.canUseEmoji(emoji, channelId);
+                    if (canUse) continue;
 
-                for (const match of matches) {
-                    const shortcode = match[1];
-                    const fullMatch = match[0];
+                    // Build the emoji string Discord expects: <:name:id> or <a:name:id>
+                    const emojiString = `<${emoji.animated ? "a" : ""}:${emoji.originalName || emoji.name}:${emoji.id}>`;
+                    const size = this.store.emojiSize || 48;
 
-                    try {
-                        // Search all emojis for a match by name
-                        const emojis = emojiStore.getEmoji?.();
-                        if (!emojis) continue;
+                    // Build the CDN URL
+                    const ext = emoji.animated ? "gif" : "png";
+                    const url = `https://cdn.discordapp.com/emojis/${emoji.id}.${ext}?size=${size}`;
 
-                        const emoji = emojis.find?.(e =>
-                            e.name?.toLowerCase() === shortcode.toLowerCase() ||
-                            e.name?.replace(/\s/g, "_").toLowerCase() === shortcode.toLowerCase()
-                        );
+                    // Replace the emoji string with a hyperlink: [name](url)
+                    messageObj.content = messageObj.content.replace(
+                        emojiString,
+                        `[${emoji.name}](${url})`
+                    );
 
-                        if (emoji && emoji.id) {
-                            const size = this.store.emojiSize || 48;
-                            const animated = emoji.animated ? "a" : "";
-                            const url = `https://cdn.discordapp.com/emojis/${emoji.id}.${emoji.animated ? "gif" : "png"}?size=${size}`;
-                            const replacement = `<${animated}:${emoji.name}:${emoji.id}> ${url}`;
-                            newContent = newContent.replace(fullMatch, replacement);
-                        }
-                    } catch (e) {
-                        // Skip this emoji if lookup fails
-                    }
+                    modified = true;
+                } catch (e) {
+                    // Skip this emoji if processing fails
                 }
+            }
 
-                if (newContent !== content) {
-                    event.message.content = newContent;
-                }
-            } catch (e) {
-                this.logger.error("Error in emoji bypass", e);
+            if (modified) {
+                // Return cancel: false so the message still sends
             }
         };
 
@@ -250,5 +244,31 @@ DigiCord.registerPlugin({
         this._listeners.push(() => DigiCord.MessageEvents.removePreSendListener(listener));
 
         this.logger.info("Emoji bypass active");
+    },
+
+    canUseEmoji(emoji, channelId) {
+        // If no guild_id, it's a standard emoji - always usable
+        if (!emoji.guildId) return true;
+
+        const currentGuildId = DigiCord.getCurrentGuildId?.();
+        if (emoji.guildId === currentGuildId) return true;
+
+        // Check if user has USE_EXTERNAL_EMOJIS permission
+        try {
+            const PermissionStore = DigiCord.Stores?.PermissionStore;
+            const ChannelStore = DigiCord.Stores?.ChannelStore;
+            if (!PermissionStore || !ChannelStore) return false;
+
+            const channel = ChannelStore.getChannel(channelId);
+            if (!channel) return false;
+
+            // Private channels - always allowed
+            if (channel.type === 1) return true;
+
+            // Permission bit for USE_EXTERNAL_EMOJIS = 1n << 18n = 262144n
+            return PermissionStore.can(262144n, channel);
+        } catch (e) {
+            return false;
+        }
     },
 });

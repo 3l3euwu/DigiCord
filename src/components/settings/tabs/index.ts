@@ -1,12 +1,13 @@
 /*
- * Vencord, a Discord client mod
- * Copyright (c) 2025 Vendicated and contributors
+ * DigiCord, a custom distribution of Vencord
+ * Copyright (c) 2025 elee-py
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
 import "./styles.css";
 
 export * from "./BaseTab";
+export { default as AboutTab } from "./about";
 export { default as ExternalPluginsTab } from "./externalPlugins";
 export { default as ExternalThemesTab } from "./externalThemes";
 export { default as PatchHelperTab } from "./patchHelper";

@@ -17,8 +17,8 @@
 */
 
 import { definePluginSettings } from "@api/Settings";
-import { BackupRestoreIcon, CloudIcon, MainSettingsIcon, PaintbrushIcon, PatchHelperIcon, PlaceholderIcon, PluginsIcon, UpdaterIcon, VesktopSettingsIcon } from "@components/Icons";
-import { BackupAndRestoreTab, CloudTab, ExternalPluginsTab, ExternalThemesTab, PatchHelperTab, PluginsTab, ThemesTab, UpdaterTab, VencordTab } from "@components/settings/tabs";
+import { BackupRestoreIcon, CloudIcon, InfoIcon, MainSettingsIcon, PaintbrushIcon, PatchHelperIcon, PlaceholderIcon, PluginsIcon, UpdaterIcon, VesktopSettingsIcon } from "@components/Icons";
+import { AboutTab, BackupAndRestoreTab, CloudTab, ExternalPluginsTab, ExternalThemesTab, PatchHelperTab, PluginsTab, ThemesTab, UpdaterTab, VencordTab } from "@components/settings/tabs";
 import { Devs } from "@utils/constants";
 import { isTruthy } from "@utils/guards";
 import definePlugin, { IconProps, OptionType } from "@utils/types";
@@ -175,6 +175,13 @@ export default definePlugin({
                 panelTitle: "Vencord + DigiCord Settings",
                 Component: VencordTab,
                 Icon: MainSettingsIcon
+            }),
+            buildEntry({
+                key: "digicord_about",
+                title: "About",
+                panelTitle: "About DigiCord",
+                Component: AboutTab,
+                Icon: InfoIcon
             }),
             buildEntry({
                 key: "vencord_plugins",

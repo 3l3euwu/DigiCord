@@ -22,6 +22,7 @@ import { enableStyle, disableStyle } from "@api/Styles";
 import { Logger } from "@utils/Logger";
 import { Patch, Plugin, PluginDef } from "@utils/types";
 import { FluxDispatcher } from "@webpack/common";
+import { filters, findByProps, findByPropsLazy, findByCode, findByCodeLazy, find, findAll, findStore, waitFor, waitForComponent } from "@webpack";
 import { patches } from "@webpack/patcher";
 
 const logger = new Logger("ExternalPlugins", "#ff6b6b");
@@ -247,7 +248,7 @@ function buildGlobalApi() {
                 findByPropsLazy: w.findByPropsLazy,
                 findByCode: w.findByCode,
                 findByCodeLazy: w.findByCodeLazy,
-                findByStoreName: w.findByStoreName,
+                findStore: w.findStore,
                 filters: w.filters,
                 waitFor: w.waitFor,
                 waitForComponent: w.waitForComponent,
@@ -293,7 +294,19 @@ function buildGlobalApi() {
                 PresenceStore: c.PresenceStore,
                 RelationshipStore: c.RelationshipStore,
                 EmojiStore: c.EmojiStore,
+                PermissionStore: c.PermissionStore,
+                GuildChannelStore: c.GuildChannelStore,
             };
+        },
+
+        getCurrentGuildId() {
+            const c = getCommon();
+            return c.SelectedGuildStore?.getGuildId?.() ?? null;
+        },
+
+        getCurrentChannelId() {
+            const c = getCommon();
+            return c.SelectedChannelStore?.getChannelId?.() ?? null;
         },
 
         // ── Settings type constants for plugin authors ──
@@ -301,12 +314,465 @@ function buildGlobalApi() {
     };
 }
 
+// ── BetterDiscord API shim ────────────────────────────────────────────────
+
+function buildBdApi(pluginName?: string) {
+    const getWebpack = () => require("@webpack");
+    const getCommon = () => require("@webpack/common");
+
+    const name = pluginName ?? "DigiCordPlugin";
+
+    // ── Patcher ──
+    // BD patcher monkey-patches live objects directly (not source-level).
+    const patcher = {
+        _patches: [] as Array<{
+            mod: any; method: string; type: string;
+            original: Function; patched: Function;
+        }>,
+        _counter: 0,
+
+        _makeId() { return `bd_${name}_${this._counter++}`; },
+
+        after(mod: any, method: string, callback: Function) {
+            if (!mod?.[method] || typeof mod[method] !== "function") return;
+            const original = mod[method];
+            const patched = function (this: any, ...args: any[]) {
+                const result = original.apply(this, args);
+                try { callback(this, args, result); } catch (e) { console.error("[BdApi.Patcher.after]", e); }
+                return result;
+            };
+            mod[method] = patched;
+            this._patches.push({ mod, method, type: "after", original, patched });
+        },
+
+        before(mod: any, method: string, callback: Function) {
+            if (!mod?.[method] || typeof mod[method] !== "function") return;
+            const original = mod[method];
+            const patched = function (this: any, ...args: any[]) {
+                const cancel = { cancel: false };
+                try { callback(this, args, cancel); } catch (e) { console.error("[BdApi.Patcher.before]", e); }
+                if (cancel.cancel) return;
+                return original.apply(this, args);
+            };
+            mod[method] = patched;
+            this._patches.push({ mod, method, type: "before", original, patched });
+        },
+
+        instead(mod: any, method: string, callback: Function) {
+            if (!mod?.[method] || typeof mod[method] !== "function") return;
+            const original = mod[method];
+            const patched = function (this: any, ...args: any[]) {
+                return callback(this, args, original.bind(this));
+            };
+            mod[method] = patched;
+            this._patches.push({ mod, method, type: "instead", original, patched });
+        },
+
+        unpatchAll() {
+            for (const p of this._patches) {
+                if (p.mod?.[p.method] === p.patched) {
+                    p.mod[p.method] = p.original;
+                }
+            }
+            this._patches = [];
+        }
+    };
+
+    // ── Webpack ──
+    const bdFilters = {
+        byProps: (...props: string[]) => (m: any) => props.every(p => m && typeof m[p] !== "undefined"),
+        byKeys: (...keys: string[]) => (m: any) => keys.every(k => m && typeof m[k] !== "undefined"),
+        bySource: (...code: string[]) => (m: any) => {
+            try {
+                // Check function toString
+                if (typeof m === "function") {
+                    const str = Function.prototype.toString.call(m);
+                    if (code.every(c => str.includes(c))) return true;
+                }
+                // Check object values
+                if (typeof m === "object" && m !== null) {
+                    for (const val of Object.values(m)) {
+                        if (typeof val === "function") {
+                            const str = Function.prototype.toString.call(val);
+                            if (code.every(c => str.includes(c))) return true;
+                        }
+                    }
+                }
+                return false;
+            } catch {
+                return false;
+            }
+        },
+        byStrings: (...strings: string[]) => (m: any) => {
+            try {
+                if (typeof m === "function") {
+                    const str = Function.prototype.toString.call(m);
+                    if (strings.every(s => str.includes(s))) return true;
+                }
+                if (typeof m === "object" && m !== null) {
+                    for (const val of Object.values(m)) {
+                        if (typeof val === "function") {
+                            const str = Function.prototype.toString.call(val);
+                            if (strings.every(s => str.includes(s))) return true;
+                        }
+                    }
+                }
+                return false;
+            } catch {
+                return false;
+            }
+        },
+        byPrototypeKeys: (...keys: string[]) => (m: any) => {
+            return keys.every(k => m?.prototype && typeof m.prototype[k] === "function");
+        },
+        byDisplayName: (display: string) => (m: any) => m?.displayName === display,
+        byStoreName: (storeName: string) => (m: any) => m?.storeName === storeName || m?.constructor?.storeName === storeName || m?._dispatchToken?.includes(storeName),
+        combine: (...fns: Function[]) => (m: any) => fns.every(fn => fn(m)),
+        not: (fn: Function) => (m: any) => !fn(m),
+    };
+
+    const webpack = {
+        get Module() { return getWebpack(); },
+        get Common() { return getCommon(); },
+
+        find(filter: Function) {
+            const w = getWebpack();
+            const cache = w.cache ?? {};
+            for (const key in cache) {
+                const mod = cache[key];
+                if (!mod?.exports) continue;
+                if (filter(mod.exports)) return mod.exports;
+                if (typeof mod.exports === "object") {
+                    for (const nestedKey in mod.exports) {
+                        const nested = mod.exports[nestedKey];
+                        if (nested && filter(nested)) return nested;
+                    }
+                }
+            }
+            return null;
+        },
+        findAll(filter: Function) {
+            const w = getWebpack();
+            const cache = w.cache ?? {};
+            const results: any[] = [];
+            for (const key in cache) {
+                const mod = cache[key];
+                if (!mod?.exports) continue;
+                if (filter(mod.exports)) results.push(mod.exports);
+                if (typeof mod.exports === "object") {
+                    for (const nestedKey in mod.exports) {
+                        const nested = mod.exports[nestedKey];
+                        if (nested && filter(nested)) results.push(nested);
+                    }
+                }
+            }
+            return results;
+        },
+
+        getModule(filter: Function, opts?: { all?: boolean; raw?: boolean; defaultExport?: boolean }) {
+            const result = opts?.all ? findAll(filter as any) : find(filter as any);
+            if (opts?.raw) return result;
+            return result;
+        },
+
+        getBulk(...queries: any[]) {
+            const w = getWebpack();
+            const cache = w.cache ?? {};
+            const results = queries.map(() => undefined as any);
+
+            // Search through ALL webpack modules like BD does
+            for (const key in cache) {
+                const mod = cache[key];
+                if (!mod?.exports) continue;
+
+                for (let q = 0; q < queries.length; q++) {
+                    if (results[q] !== undefined) continue; // already found
+                    const query = queries[q];
+                    const filter = query.filter;
+                    if (!filter) continue;
+
+                    // Check direct export
+                    if (filter(mod.exports)) {
+                        let result = mod.exports;
+                        if (query.defaultExport !== false && result?.default) result = result.default;
+                        if (query.map && typeof result === "object" && result !== null) {
+                            const mapped: any = {};
+                            for (const [key2, mapFn] of Object.entries(query.map)) {
+                                try { mapped[key2] = (mapFn as Function)(result); } catch { mapped[key2] = undefined; }
+                            }
+                            results[q] = mapped;
+                        } else {
+                            results[q] = result;
+                        }
+                        continue;
+                    }
+
+                    // Check nested exports
+                    if (typeof mod.exports === "object") {
+                        for (const nestedKey in mod.exports) {
+                            const nested = mod.exports[nestedKey];
+                            if (nested && filter(nested)) {
+                                let result = nested;
+                                if (query.defaultExport !== false && result?.default) result = result.default;
+                                if (query.map && typeof result === "object" && result !== null) {
+                                    const mapped: any = {};
+                                    for (const [key2, mapFn] of Object.entries(query.map)) {
+                                        try { mapped[key2] = (mapFn as Function)(result); } catch { mapped[key2] = undefined; }
+                                    }
+                                    results[q] = mapped;
+                                } else {
+                                    results[q] = result;
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            return results.map((r, i) => r ?? {});
+        },
+
+        async waitForModule(filter: Function, opts?: { signal?: AbortSignal; defaultExport?: boolean; raw?: boolean; }) {
+            return new Promise((resolve) => {
+                if (opts?.signal?.aborted) { resolve(undefined); return; }
+                const check = () => {
+                    const result = webpack.find(filter);
+                    if (result) {
+                        if (opts?.defaultExport === false || opts?.raw) resolve(result);
+                        else resolve(result?.default ?? result);
+                        return true;
+                    }
+                    return false;
+                };
+                if (check()) return;
+                const interval = setInterval(() => {
+                    if (opts?.signal?.aborted) { clearInterval(interval); resolve(undefined); return; }
+                    if (check()) clearInterval(interval);
+                }, 100);
+            });
+        },
+
+        Filters: bdFilters,
+        filters: bdFilters,
+        Stores: getCommon(),
+    };
+
+    // ── DOM ──
+    const dom = {
+        addStyle(id: string, css: string) {
+            const existing = document.getElementById(id);
+            if (existing) existing.remove();
+            const style = document.createElement("style");
+            style.id = id;
+            style.textContent = css;
+            document.head.appendChild(style);
+        },
+        removeStyle(id: string) {
+            const el = document.getElementById(id);
+            if (el) el.remove();
+        },
+        query(selector: string) { return document.querySelector(selector); },
+        queryAll(selector: string) { return document.querySelectorAll(selector); },
+        createElement(tag: string, options?: any) {
+            const el = document.createElement(tag);
+            if (options?.id) el.id = options.id;
+            if (options?.className) el.className = options.className;
+            if (options?.textContent) el.textContent = options.textContent;
+            if (options?.style) el.style.cssText = options.style;
+            return el;
+        }
+    };
+
+    // ── Data ──
+    const data = {
+        save(key: string, val: any) {
+            DataStore.set(`DigiCord_bd_${name}_${key}`, val);
+        },
+        load(key: string) {
+            return DataStore.get(`DigiCord_bd_${name}_${key}`);
+        },
+        delete(key: string) {
+            DataStore.del(`DigiCord_bd_${name}_${key}`);
+        }
+    };
+
+    // ── UI ──
+    const ui = {
+        showToast(content: string, options?: any) {
+            const type = typeof options === "string" ? options : options?.type;
+            const typeMap: Record<string, number> = { success: 1, error: 4, warning: 2, info: 1 };
+            getCommon().showToast?.(content, typeMap[type] ?? 1);
+        },
+        showConfirmationModal(title: string, content: any, options?: any) {
+            getCommon().showConfirmationModal?.(title, content, options);
+        },
+        showNotification(options: any) {
+            getCommon().showNotification?.(options);
+        },
+        showChangelogModal(options: any) {
+            getCommon().showChangelogModal?.(options);
+        },
+        buildSettingsPanel(options: any) {
+            // Return a React element that renders settings
+            const React = getCommon().React;
+            if (!React) return null;
+
+            // Store reference for settings access
+            const settingsRef = { current: {} as any };
+
+            return React.createElement("div", null,
+                ...((options.settings ?? []).map((section: any) => {
+                    if (section.type === "category") {
+                        return React.createElement("div", { style: { marginTop: "16px" } },
+                            React.createElement("h3", { style: { color: "var(--header-primary)", marginBottom: "8px" } }, section.name),
+                            ...((section.settings ?? []).map((setting: any) => {
+                                const val = typeof setting.value === "function" ? setting.value() : setting.value;
+                                return React.createElement("div", { style: { marginBottom: "8px" } },
+                                    React.createElement("label", { style: { color: "var(--header-secondary)", display: "block", marginBottom: "4px" } }, setting.name),
+                                    React.createElement("span", { style: { color: "var(--text-muted)", fontSize: "12px", display: "block", marginBottom: "4px" } }, setting.note),
+                                    (() => {
+                                        if (setting.type === "switch") {
+                                            return React.createElement("input", {
+                                                type: "checkbox",
+                                                checked: val,
+                                                onChange: (e: any) => {
+                                                    settingsRef.current[setting.id] = e.target.checked;
+                                                    options.onChange?.(section.id, setting.id, e.target.checked);
+                                                }
+                                            });
+                                        }
+                                        if (setting.type === "dropdown") {
+                                            return React.createElement("select", {
+                                                value: val,
+                                                onChange: (e: any) => {
+                                                    const opt = setting.options?.find((o: any) => String(o.value) === e.target.value);
+                                                    settingsRef.current[setting.id] = opt ? opt.value : e.target.value;
+                                                    options.onChange?.(section.id, setting.id, settingsRef.current[setting.id]);
+                                                }
+                                            },
+                                                ...((setting.options ?? []).map((opt: any) =>
+                                                    React.createElement("option", { value: String(opt.value), key: String(opt.value) }, opt.label)
+                                                ))
+                                            );
+                                        }
+                                        // text/number
+                                        return React.createElement("input", {
+                                            type: setting.type === "text" ? "text" : "number",
+                                            value: val,
+                                            onChange: (e: any) => {
+                                                settingsRef.current[setting.id] = e.target.value;
+                                                options.onChange?.(section.id, setting.id, e.target.value);
+                                            }
+                                        });
+                                    })()
+                                );
+                            }))
+                        );
+                    }
+                    return null;
+                }))
+            );
+        },
+        alert(title: string, content: string) {
+            getCommon().showConfirmationModal?.(title, content);
+        }
+    };
+
+    // ── Logger ──
+    const logger = new Logger(name, "#ff6b6b");
+
+    // ── ContextMenu ──
+    const contextMenu = {
+        _patches: [] as Array<{ navId: string; patch: Function; }>,
+        patch(navId: string, callback: Function) {
+            addContextMenuPatch(navId, callback as any);
+            this._patches.push({ navId, patch: callback });
+        },
+        unpatch(navId: string, callback: Function) {
+            removeContextMenuPatch(navId, callback as any);
+            this._patches = this._patches.filter(p => !(p.navId === navId && p.patch === callback));
+        },
+        buildMenu(items: any[]) {
+            return items;
+        },
+        open(e: any, menu: any) {
+            // Placeholder - would need Discord's Menu API
+        },
+        buildItem(options: any) {
+            return options;
+        },
+        Item: null as any, // React component placeholder
+    };
+
+    // ── ReactUtils ──
+    const reactUtils = {
+        createNodePatcher() {
+            return {
+                patch(element: any, callback: Function) {
+                    // Simple node patching
+                    if (element?.props) {
+                        callback(element.props, element);
+                    }
+                }
+            };
+        }
+    };
+
+    // ── Net ──
+    const net = {
+        fetch: window.fetch.bind(window),
+    };
+
+    // ── Components ──
+    const components = {
+        get TextInput() { return getCommon().TextInput; },
+        get NumberInput() { return getCommon().TextInput; },
+        get Button() { return getCommon().Button; },
+        get Text() { return getCommon().Forms?.FormText; },
+    };
+
+    // ── Plugins ──
+    const plugins = {
+        folder: "betterdiscord/plugins",
+        reload(pluginName: string) { /* stub */ },
+        enable(pluginName: string) { /* stub */ },
+    };
+
+    return {
+        Patcher: patcher,
+        Webpack: webpack,
+        DOM: dom,
+        Data: data,
+        UI: ui,
+        Logger: logger,
+        ContextMenu: contextMenu,
+        ReactUtils: reactUtils,
+        Net: net,
+        React: getCommon().React,
+        Components: components,
+        Plugins: plugins,
+        Utils: {},
+        _pluginName: name,
+    };
+}
+
+// Make BdApi a constructor
+const BdApiConstructor = function(this: any, pluginName: string) {
+    if (!(this instanceof BdApiConstructor)) {
+        return new (BdApiConstructor as any)(pluginName);
+    }
+    return buildBdApi(pluginName);
+} as any;
+BdApiConstructor.prototype = {};
+
 // ── Install the global API on window ──────────────────────────────────────
 
 function installGlobalApi() {
     if (window.DigiCord) return;
     window.DigiCord = buildGlobalApi();
-    logger.info("Installed global DigiCord API on window.DigiCord");
+    window.BdApi = BdApiConstructor;
+    logger.info("Installed global DigiCord API and BdApi shim on window");
 }
 
 // ── Plugin lifecycle ──────────────────────────────────────────────────────
@@ -443,9 +909,76 @@ async function executePluginScript(code: string): Promise<{ plugins: Plugin[], s
     window.__dicicord_internal = {};
     window.__dicicord_internal_settings = {};
 
+    // Set up module.exports for BetterDiscord-style plugins
+    const moduleObj: any = { exports: {} };
+    const exportsObj = moduleObj.exports;
+
+    // Detect if this is a BetterDiscord plugin (uses module.exports)
+    const isBDPlugin = code.includes("module.exports");
+
     try {
-        const fn = new Function(code);
-        fn();
+        if (isBDPlugin) {
+            // BetterDiscord pattern: wrap in a function that provides module/exports
+            // Also provide stub require for Node.js modules (fs, path, etc.)
+            const bdRequire = (module: string) => {
+                if (module === "fs") {
+                    return {
+                        readFileSync: () => { throw new Error("fs.readFileSync is not available in DigiCord"); },
+                        writeFileSync: () => { throw new Error("fs.writeFileSync is not available in DigiCord"); },
+                        existsSync: () => false,
+                        readdirSync: () => [],
+                        statSync: () => ({ isFile: () => false, isDirectory: () => false }),
+                    };
+                }
+                if (module === "path") {
+                    return {
+                        join: (...args: any[]) => args.map(String).join("/"),
+                        resolve: (...args: any[]) => args.map(String).join("/"),
+                        dirname: (p: any) => String(p).split("/").slice(0, -1).join("/"),
+                        basename: (p: any) => String(p).split("/").pop() ?? "",
+                        extname: (p: any) => { const parts = String(p).split("."); return parts.length > 1 ? `.${parts.pop()}` : ""; },
+                        sep: "/",
+                    };
+                }
+                // Try Vencord's require for other modules
+                try {
+                    return require(module);
+                } catch {
+                    return {};
+                }
+            };
+            const fn = new Function("module", "exports", "require", "BdApi", "DigiCord", code);
+            fn(moduleObj, exportsObj, bdRequire, window.BdApi, window.DigiCord);
+
+            // Check what was exported
+            const exported = moduleObj.exports;
+
+            if (typeof exported === "function") {
+                // class/module.exports = class MyPlugin { ... }
+                try {
+                    const instance = new exported();
+                    wrapBDPlugin(instance);
+                } catch (e) {
+                    // Maybe it's a function that returns a class
+                    try {
+                        const PluginClass = exported({ BdApi: window.BdApi, DigiCord: window.DigiCord });
+                        if (typeof PluginClass === "function") {
+                            const instance = new PluginClass();
+                            wrapBDPlugin(instance);
+                        }
+                    } catch (e2) {
+                        logger.error("Failed to instantiate BD plugin:", e, e2);
+                    }
+                }
+            } else if (typeof exported === "object" && exported !== null) {
+                // module.exports = { start, stop, ... }
+                wrapBDPlugin(exported);
+            }
+        } else {
+            // DigiCord pattern
+            const fn = new Function(code);
+            fn();
+        }
     } catch (e) {
         logger.error("Failed to execute plugin script:", e);
         throw e;
@@ -466,6 +999,77 @@ async function executePluginScript(code: string): Promise<{ plugins: Plugin[], s
     window.__dicicord_internal_settings = {};
 
     return { plugins, settingsDefs };
+}
+
+// ── Wrap a BetterDiscord-style plugin into DigiCord format ────────────────
+
+function wrapBDPlugin(bdPlugin: any) {
+    // Extract settings from BD format if present
+    let settingsDef: ExtSettingsDefinition | undefined;
+    if (bdPlugin.Settings && typeof bdPlugin.Settings === "object") {
+        settingsDef = {};
+        for (const [key, val] of Object.entries(bdPlugin.Settings)) {
+            const v = val as any;
+            settingsDef[key] = {
+                type: v.type === "switch" ? ExtOptionType.BOOLEAN
+                    : v.type === "textbox" ? ExtOptionType.STRING
+                    : v.type === "dropdown" ? ExtOptionType.SELECT
+                    : v.type === "slider" ? ExtOptionType.SLIDER
+                    : ExtOptionType.STRING,
+                description: v.note ?? "",
+                default: v.value ?? v.default,
+                options: v.options?.map((o: any) => ({ label: o.label ?? String(o.value), value: o.value })),
+                placeholder: v.placeholder,
+            };
+        }
+    }
+
+    // Get plugin name
+    const pluginName = bdPlugin.name
+        ?? bdPlugin.getName?.()
+        ?? bdPlugin.constructor?.pluginName
+        ?? bdPlugin.constructor?.name
+        ?? "UnknownBDPlugin";
+
+    // Build DigiCord-compatible plugin object
+    const plugin: Plugin = {
+        name: pluginName,
+        description: bdPlugin.description ?? bdPlugin.getDescription?.() ?? "",
+        authors: bdPlugin.authors ?? [{ name: "BD Author", id: 0 }],
+        started: false,
+
+        start() {
+            try {
+                if (typeof bdPlugin.onStart === "function") bdPlugin.onStart();
+                else if (typeof bdPlugin.start === "function") bdPlugin.start();
+                bdPlugin._enabled = true;
+            } catch (e) {
+                logger.error(`BD Plugin ${pluginName} start failed:`, e);
+                throw e;
+            }
+        },
+
+        stop() {
+            try {
+                if (typeof bdPlugin.onStop === "function") bdPlugin.onStop();
+                else if (typeof bdPlugin.stop === "function") bdPlugin.stop();
+                bdPlugin._enabled = false;
+            } catch (e) {
+                logger.error(`BD Plugin ${pluginName} stop failed:`, e);
+            }
+        },
+    } as Plugin;
+
+    // Store settings
+    if (settingsDef) {
+        window.__dicicord_internal_settings = window.__dicicord_internal_settings ?? {};
+        window.__dicicord_internal_settings[pluginName] = settingsDef;
+    }
+
+    if (!window.__dicicord_internal) window.__dicicord_internal = {};
+    window.__dicicord_internal[pluginName] = plugin;
+
+    logger.info(`Wrapped BetterDiscord plugin: ${pluginName}`);
 }
 
 // ── Public API ────────────────────────────────────────────────────────────
@@ -495,27 +1099,25 @@ export async function installExternalPlugin(url: string): Promise<ExternalPlugin
         result = await executePluginScript(code);
     } catch (e: any) {
         const msg = e?.message ?? String(e);
-        if (msg.includes("require is not defined") || msg.includes("fs") || msg.includes("path")) {
-            throw new Error(
-                "This plugin uses Node.js APIs (require, fs, path) which don't work in DigiCord. " +
-                "This is likely a BetterDiscord plugin. DigiCord plugins must use DigiCord.* APIs instead.\n" +
-                `Original error: ${msg}`
-            );
-        }
         throw new Error(`Failed to execute plugin script: ${msg}`);
     }
 
     if (result.plugins.length === 0) {
         throw new Error(
-            "No plugin registered! Make sure your .js file calls DigiCord.registerPlugin({...}).\n\n" +
-            "Example:\n" +
+            "No plugin registered! Your .js file must use one of these patterns:\n\n" +
+            "// DigiCord pattern:\n" +
             "DigiCord.registerPlugin({\n" +
             "  name: 'MyPlugin',\n" +
             "  description: '...',\n" +
             "  authors: [{ name: 'You', id: 123 }],\n" +
             "  start() { console.log('Started!'); },\n" +
             "  stop() { console.log('Stopped!'); }\n" +
-            "});"
+            "});\n\n" +
+            "// BetterDiscord pattern:\n" +
+            "module.exports = class MyPlugin {\n" +
+            "  start() { console.log('Started!'); }\n" +
+            "  stop() { console.log('Stopped!'); }\n" +
+            "};"
         );
     }
 
@@ -700,6 +1302,7 @@ export async function initExternalPlugins(): Promise<void> {
 declare global {
     interface Window {
         DigiCord?: ReturnType<typeof buildGlobalApi>;
+        BdApi?: typeof BdApiConstructor;
         __dicicord_internal?: Record<string, Plugin>;
         __dicicord_internal_settings?: Record<string, ExtSettingsDefinition>;
     }

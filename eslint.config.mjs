@@ -18,7 +18,7 @@ export default tseslint.config(
         files: ["src/**/*.{tsx,ts,mts,mjs,js,jsx}", "eslint.config.mjs"],
         settings: {
             react: {
-                version: "b1"
+                version: "b2"
             }
         },
         ...react.configs.flat.recommended,
