@@ -273,3 +273,86 @@
 .vc-ext-plugins-action-btn-settings:hover {
     background: var(--brand-560);
 }
+
+/* ── Info Modal ── */
+
+.vc-ext-info-section {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.vc-ext-info-section h5 {
+    margin-bottom: 4px;
+}
+
+.vc-ext-info-author {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 2px 0;
+}
+
+.vc-ext-info-author-name {
+    font-weight: 500;
+    color: var(--text-normal);
+}
+
+.vc-ext-info-author-id {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.vc-ext-info-detail {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 2px 0;
+}
+
+.vc-ext-info-detail-label {
+    min-width: 80px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.vc-ext-info-detail-value {
+    font-size: 13px;
+    color: var(--text-normal);
+}
+
+.vc-ext-info-detail-value.started {
+    color: #57f287;
+    font-weight: 600;
+}
+
+.vc-ext-info-detail-value.stopped {
+    color: #fee75c;
+    font-weight: 600;
+}
+
+.vc-ext-info-setting {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--background-modifier-accent);
+}
+
+.vc-ext-info-setting:last-child {
+    border-bottom: none;
+}
+
+.vc-ext-info-setting-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-normal);
+}
+
+.vc-ext-info-setting-desc {
+    font-size: 11px;
+    color: var(--text-muted);
+}

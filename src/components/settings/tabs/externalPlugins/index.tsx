@@ -27,6 +27,7 @@ import { Margins } from "@utils/margins";
 import { Forms, React, showToast, Toasts } from "@webpack/common";
 
 import { openExternalPluginSettings } from "./ExternalPluginSettingsModal";
+import { openExternalPluginInfo } from "./ExternalPluginInfoModal";
 
 const cl = classNameFactory("vc-ext-plugins-");
 const logger = new Logger("ExternalPluginsUI", "#ff6b6b");
@@ -170,6 +171,12 @@ function ExternalPluginsTab() {
                                         {entry.url}
                                     </div>
                                     <div className={cl("card-actions")}>
+                                        <button
+                                            className={cl("action-btn")}
+                                            onClick={() => openExternalPluginInfo(name)}
+                                        >
+                                            Info
+                                        </button>
                                         {hasSettings && (
                                             <button
                                                 className={cl("action-btn", "action-btn-settings")}
