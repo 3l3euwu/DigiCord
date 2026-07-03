@@ -1,7 +1,7 @@
 DigiCord.registerPlugin({
-    name: "YABDP4Nitro",
+    name: "DigiTro",
     description: "Unlock Nitro features: emoji bypass, screen sharing, stickers, client themes, and more!",
-    authors: [{ name: "Riolubruh (DigiCord)", id: 0 }],
+    authors: [{ name: "DigiCord Native", id: 0 }],
 
     settings: {
         def: {
